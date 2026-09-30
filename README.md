@@ -91,12 +91,23 @@ the human review step, and a Schedule Trigger for SLA overdue escalation. See
 directly on the n8n instance through n8n's own MCP server once connected, the same way
 Ember and Oak's sibling projects were, not a blind hand written workflow file.
 
+## Deployment status
+
+Deployed and verified live, 2026-09-30. FastAPI service runs on Railway. `GET /rules`,
+`GET /golden/run` (8/8 passed against the real deployment, not just locally) and a real
+`POST /triage` call, with a real Gemini response, all confirmed working. The n8n side
+is published, active, and confirmed end to end: a real POST to the intake webhook ran
+the full chain (secret check, validation, the FastAPI call, routing) and came back
+correctly routed to `escalate` for a test emergency ticket.
+
 ## Known limits
 
 - Sending a real reply is not built. Approval only marks a ticket ready to send.
-- The 14 rule catalog is a real, readable starting point, not exhaustive; a real
+- The 15 rule catalog is a real, readable starting point, not exhaustive; a real
   deployment would extend it with the business's actual escalation policy.
 - Gemini's free tier limit is 15 requests per minute for this model. Fine for a demo,
   worth a paid tier before real volume.
-- Cover and ERD images (`docs/`) reflect the earlier, Sheet based version and need
-  regenerating against the new SQLite schema.
+- **`google-generativeai` (used in `app/llm/gemini.py`) is fully deprecated** — Google's
+  own message says it is no longer receiving updates, confirmed live in the Railway
+  logs. Still works today. Needs migrating to `google-genai` before this is relied on
+  long term; not yet done.
