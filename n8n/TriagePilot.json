@@ -105,13 +105,13 @@
             {
               "id": "api_base_url",
               "name": "api_base_url",
-              "value": "https://YOUR-DEPLOYED-FASTAPI-URL",
+              "value": "https://triagepilot-production.up.railway.app",
               "type": "string"
             },
             {
               "id": "webhook_secret",
               "name": "webhook_secret",
-              "value": "CHANGE-ME-RANDOM-STRING",
+              "value": "8f2c9e1a4b7d6053f9c8e2a1b4d7f605",
               "type": "string"
             }
           ]
@@ -509,13 +509,13 @@
             {
               "id": "api_base_url",
               "name": "api_base_url",
-              "value": "https://YOUR-DEPLOYED-FASTAPI-URL",
+              "value": "https://triagepilot-production.up.railway.app",
               "type": "string"
             },
             {
               "id": "webhook_secret",
               "name": "webhook_secret",
-              "value": "CHANGE-ME-RANDOM-STRING",
+              "value": "3a9e7c5f1b8d4062e7a3c9f5b1d80642",
               "type": "string"
             }
           ]
@@ -644,7 +644,7 @@
             {
               "id": "api_base_url",
               "name": "api_base_url",
-              "value": "https://YOUR-DEPLOYED-FASTAPI-URL",
+              "value": "https://triagepilot-production.up.railway.app",
               "type": "string"
             }
           ]
