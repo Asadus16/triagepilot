@@ -135,6 +135,15 @@ def _t01_topic_in_catalog(t: Ticket, s: ExtractedSignals, repeat: bool) -> "tupl
     return _ok()
 
 
+def _v01_vip_customer(t: Ticket, s: ExtractedSignals, repeat: bool) -> "tuple[Status, str]":
+    from app.config import get_settings
+
+    vip_list = {e.strip().lower() for e in get_settings().vip_emails.split(",") if e.strip()}
+    if t.customer_email.lower() in vip_list:
+        return _flag("Customer is on the configured VIP list.")
+    return _ok()
+
+
 CATALOG: list[Rule] = [
     Rule("E01", "emergency", "Explicit emergency language in the ticket text", "emergency_keyword", _e01_emergency_keywords),
     Rule("E02", "emergency", "Model read the ticket as describing an emergency", "emergency_signal", _e02_emergency_signal),
@@ -150,4 +159,5 @@ CATALOG: list[Rule] = [
     Rule("S01", "tone", "Model read the tone as angry", "angry_tone", _s01_angry_tone),
     Rule("S02", "tone", "All caps or repeated punctuation in the message", "shouting", _s02_shouting),
     Rule("T01", "topic", "Topic guess outside the configured category list", "topic_out_of_catalog", _t01_topic_in_catalog),
+    Rule("V01", "vip", "Customer is on the configured VIP list", "vip_customer", _v01_vip_customer),
 ]

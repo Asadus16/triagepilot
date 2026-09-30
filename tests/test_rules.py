@@ -61,3 +61,25 @@ def test_escalate_outranks_billing_in_the_same_ticket():
     t = _ticket(message="Emergency! Also please refund the $200 I was overcharged.")
     flagged = {r.rule_id for r in run_rules(t, _signals(mentions_emergency=True, mentions_money=True), repeat_contact=False) if r.status.value == "flag"}
     assert decide_route(flagged).value == "escalate"
+
+
+def test_vip_customer_always_gets_manager_review(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("VIP_EMAILS", "vip@example.com, other@example.com")
+    get_settings.cache_clear()
+    t = _ticket(customer_email="VIP@example.com")  # case should not matter
+    flagged = {r.rule_id for r in run_rules(t, _signals(), repeat_contact=False) if r.status.value == "flag"}
+    assert "V01" in flagged
+    assert decide_route(flagged).value == "manager_review"
+    get_settings.cache_clear()
+
+
+def test_non_vip_customer_is_not_flagged(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("VIP_EMAILS", "vip@example.com")
+    get_settings.cache_clear()
+    flagged = {r.rule_id for r in run_rules(_ticket(), _signals(), repeat_contact=False) if r.status.value == "flag"}
+    assert "V01" not in flagged
+    get_settings.cache_clear()

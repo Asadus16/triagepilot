@@ -17,8 +17,8 @@ from app.llm.draft import draft_reply, guard_draft
 from app.llm.extract import extract_signals
 from app.models import Decision, HumanReview, Ticket
 from app.rules.catalog import CATALOG
-from app.rules.engine import decide_route, decide_urgency, run_rules
-from app.store import get_decision, had_recent_contact, save_decision, save_human_review, save_ticket
+from app.rules.engine import decide_route, decide_urgency, run_rules, sla_deadline
+from app.store import get_decision, get_overdue, had_recent_contact, mark_escalated_overdue, save_decision, save_human_review, save_ticket
 
 app = FastAPI(title="TriagePilot")
 
@@ -63,6 +63,7 @@ def triage(ticket: Ticket, x_service_key: Optional[str] = Header(default=None)) 
         confidence=signals.extraction_confidence,
         reason_codes=sorted(flagged),
         rule_results=rule_results,
+        sla_deadline=sla_deadline(route),
     )
     decision.draft_reply = guard_draft(draft, decision)
     save_decision(decision)
@@ -78,6 +79,23 @@ def human_review(ticket_id: str, review: HumanReview, x_service_key: Optional[st
         raise HTTPException(status_code=404, detail="no decision for that ticket_id")
     save_human_review(review)
     return {"ticket_id": ticket_id, "status": get_decision(ticket_id)["status"]}
+
+
+@app.get("/overdue")
+def overdue(x_service_key: Optional[str] = Header(default=None)) -> dict:
+    """Decisions still awaiting a human past their SLA deadline. The n8n Schedule
+    Trigger calls this, then escalates whatever comes back."""
+    _check_key(x_service_key)
+    return {"overdue": get_overdue()}
+
+
+@app.post("/escalate-overdue/{ticket_id}")
+def escalate_overdue(ticket_id: str, x_service_key: Optional[str] = Header(default=None)) -> dict:
+    _check_key(x_service_key)
+    if get_decision(ticket_id) is None:
+        raise HTTPException(status_code=404, detail="no decision for that ticket_id")
+    mark_escalated_overdue(ticket_id)
+    return {"ticket_id": ticket_id, "status": "escalated overdue"}
 
 
 @app.get("/golden/run")

@@ -22,9 +22,15 @@ work.
 
 - **The model never decides.** Gemini only extracts signals from the ticket (sentiment,
   whether it mentions an emergency, money, legal risk or a cancellation, and a topic
-  guess), validated against a strict schema. A 14 rule catalog (`app/rules/catalog.py`)
+  guess), validated against a strict schema. A 15 rule catalog (`app/rules/catalog.py`)
   decides urgency and routes the ticket, deterministically. `GET /rules` returns the
   whole catalog for a client to review.
+- **VIP customer detection.** A configured list of emails always gets manager review,
+  regardless of what the other rules find, real and deterministic, not an LLM guess.
+- **SLA overdue escalation.** Every decision gets a deadline based on its route (30
+  minutes for an emergency, 4 hours for billing or manager review, 24 hours for a
+  routine one). A third n8n trigger, a Schedule Trigger polling every 15 minutes,
+  checks `GET /overdue` and escalates whatever a human hasn't looked at in time.
 - **Four human review lanes, not one**, chosen by the rules that fired: `auto_draft`
   (nothing flagged, a quick approval), `escalate` (emergency or safety language),
   `billing_review` (money at stake), `manager_review` (legal risk, a repeat unresolved
@@ -69,7 +75,7 @@ Ticket (n8n webhook)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # set SERVICE_API_KEY; GEMINI_API_KEY optional in replay mode
-pytest                        # 11 tests incl. the rule engine, the golden gate and API auth
+pytest                        # 17 tests incl. the rule engine, the golden gate, SLA deadlines and API auth
 uvicorn app.main:app --reload --port 8099
 ```
 
@@ -79,8 +85,9 @@ matching recorded cassette in `data/cassettes/` for `replay` mode.
 
 ## n8n workflow
 
-One workflow, two real entry points on the same canvas: the ticket intake webhook, and
-the human review step. See `build-spec.md` for the exact node by node plan. It is built
+One workflow, three real entry points on the same canvas: the ticket intake webhook,
+the human review step, and a Schedule Trigger for SLA overdue escalation. See
+`build-spec.md` for the exact node by node plan. It is built
 directly on the n8n instance through n8n's own MCP server once connected, the same way
 Ember and Oak's sibling projects were, not a blind hand written workflow file.
 

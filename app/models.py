@@ -66,6 +66,7 @@ class Decision(BaseModel):
     reason_codes: list[str]
     rule_results: list[RuleResult]
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    sla_deadline: str = ""
 
 
 class HumanReview(BaseModel):

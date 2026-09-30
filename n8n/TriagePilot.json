@@ -616,6 +616,114 @@
         896,
         864
       ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "tp-schedule-sla",
+      "name": "Schedule - Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api_base_url",
+              "name": "api_base_url",
+              "value": "https://YOUR-DEPLOYED-FASTAPI-URL",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-config-sla",
+      "name": "Config3",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config3').item.json.api_base_url }}/overdue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "tp-call-overdue",
+      "name": "Call FastAPI /overdue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "overdue",
+        "options": {}
+      },
+      "id": "tp-split-overdue",
+      "name": "Split Out Overdue Tickets",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        672,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config3').item.json.api_base_url }}/escalate-overdue/{{ $json.ticket_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "tp-call-escalate",
+      "name": "Call FastAPI /escalate-overdue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        896,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 5 \u00b7 SLA overdue escalation\nA third trigger, same workflow. Every 15 minutes, checks what has sat past its deadline (30 min for an emergency, 4 hours for billing or manager review, 24 hours routine) with no human decision, and escalates it in the audit trail.\nGET {api_base_url}/overdue \u2192 POST {api_base_url}/escalate-overdue/{ticket_id}",
+        "height": 200,
+        "width": 1120,
+        "color": 6
+      },
+      "id": "tp-note-5",
+      "name": "Note - SLA",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1424
+      ]
     }
   ],
   "connections": {
@@ -831,6 +939,50 @@
         [
           {
             "node": "Respond Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config3": {
+      "main": [
+        [
+          {
+            "node": "Call FastAPI /overdue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call FastAPI /overdue": {
+      "main": [
+        [
+          {
+            "node": "Split Out Overdue Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Overdue Tickets": {
+      "main": [
+        [
+          {
+            "node": "Call FastAPI /escalate-overdue",
             "type": "main",
             "index": 0
           }

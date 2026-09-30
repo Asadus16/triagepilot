@@ -53,6 +53,16 @@ anywhere that runs Python), not on localhost. Get that URL before building the n
 10. **Respond to Webhook**
     - 200, the updated status from FastAPI's response.
 
+## Third trigger, same canvas: SLA overdue escalation
+
+11. **Schedule Trigger** — every 15 minutes.
+12. **HTTP Request — Call FastAPI /overdue**
+    - GET `{{ $('Config3').item.json.api_base_url }}/overdue`, `x-service-key` header.
+    - Returns `{ "overdue": [ {decision}, ... ] }`.
+13. **Split Out** on the `overdue` field, one item per overdue decision.
+14. **HTTP Request — Call FastAPI /escalate-overdue/{ticket_id}**
+    - POST `{{ $('Config3').item.json.api_base_url }}/escalate-overdue/{{$json.ticket_id}}`.
+
 ## Config node
 
 One Set node, `Config`, read by every HTTP Request node above:

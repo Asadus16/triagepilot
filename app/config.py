@@ -29,6 +29,8 @@ class Settings:
         self.business_name: str = os.getenv("BUSINESS_NAME", "Bright Smile Dental")
         self.business_type: str = os.getenv("BUSINESS_TYPE", "a dental clinic")
         self.categories: str = os.getenv("CATEGORIES", "appointments,billing,insurance,general,other")
+        # Comma separated emails that always get manager review, regardless of what the rules find.
+        self.vip_emails: str = os.getenv("VIP_EMAILS", "")
 
 
 @lru_cache

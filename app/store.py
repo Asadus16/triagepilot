@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     confidence REAL NOT NULL,
     reason_codes TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending approval',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    sla_deadline TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS rule_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,8 +78,8 @@ def save_ticket(ticket_id: str, ticket: Ticket) -> None:
 def save_decision(decision: Decision) -> None:
     with _connect() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO decisions (ticket_id, urgency, topic, route, draft_reply, confidence, reason_codes, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO decisions (ticket_id, urgency, topic, route, draft_reply, confidence, reason_codes, created_at, sla_deadline) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 decision.ticket_id,
                 decision.urgency.value,
@@ -88,6 +89,7 @@ def save_decision(decision: Decision) -> None:
                 decision.confidence,
                 ",".join(decision.reason_codes),
                 decision.created_at,
+                decision.sla_deadline,
             ),
         )
         for r in decision.rule_results:
@@ -124,3 +126,21 @@ def get_decision(ticket_id: str) -> dict | None:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM decisions WHERE ticket_id = ?", (ticket_id,)).fetchone()
         return dict(row) if row else None
+
+
+def get_overdue(now: datetime | None = None) -> list[dict]:
+    """Decisions still pending approval whose SLA deadline has already passed. The
+    third n8n trigger (a Schedule Trigger) polls this to escalate what a human hasn't
+    looked at in time."""
+    now = now or datetime.now(timezone.utc)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM decisions WHERE status = 'pending approval' AND sla_deadline != '' AND sla_deadline < ?",
+            (now.isoformat(),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def mark_escalated_overdue(ticket_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE decisions SET status = 'escalated overdue' WHERE ticket_id = ?", (ticket_id,))
