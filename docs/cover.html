@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body { margin:0; width:1600px; height:900px; font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: radial-gradient(circle at 78% 30%, #7c2d12 0%, #431407 45%, #1c0a03 100%); color:#fff; position:relative; }
+  .grid { position:absolute; inset:0; background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size:40px 40px; }
+  .eyebrow { position:absolute; left:92px; top:96px; letter-spacing:3px; font-size:14px; font-weight:700; color:#fdba74; }
+  h1 { position:absolute; left:88px; top:130px; font-size:72px; font-weight:800; margin:0; line-height:1.05; width:900px; }
+  h1 .accent { color:#fdba74; }
+  .tagline { position:absolute; left:92px; top:330px; font-size:22px; color:#fed7aa; width:760px; line-height:1.5; }
+  .pills { position:absolute; left:92px; top:440px; width:820px; display:flex; flex-wrap:wrap; gap:12px; }
+  .pill { border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:10px 20px; font-size:15px; font-weight:600; color:#fff; }
+  .stack { position:absolute; left:92px; bottom:70px; font-size:16px; color:#fdba74; letter-spacing:1px; }
+  .stack b { color:#fff; }
+  .preview { position:absolute; right:90px; top:520px; width:440px; background:rgba(0,0,0,.35);
+    border:1px solid rgba(255,255,255,.15); border-radius:14px; padding:24px 26px; }
+  .preview .label { font-size:11px; letter-spacing:2px; color:#fdba74; font-weight:700; }
+  .preview .row { display:flex; justify-content:space-between; margin-top:14px; font-size:15px; }
+  .preview .row b { color:#fff; }
+  .preview .row span { color:#fdba74; }
+  .preview .badge { display:inline-block; margin-top:6px; background:#c2410c; color:#fff; font-size:12px;
+    font-weight:700; padding:4px 10px; border-radius:6px; }
+</style></head>
+<body>
+  <div class="grid"></div>
+  <div class="eyebrow">AI &middot; AUTOMATION &middot; N8N + FASTAPI</div>
+  <h1>Triage<span class="accent">Pilot</span></h1>
+  <div class="tagline">Support ticket triage for any business. The model never decides &mdash; a 14 rule
+    catalog routes every ticket to the right human, deterministically.</div>
+  <div class="pills">
+    <div class="pill">14 rule engine</div>
+    <div class="pill">4 human review lanes</div>
+    <div class="pill">Narration guardrail</div>
+    <div class="pill">Full audit trail</div>
+    <div class="pill">Golden regression suite</div>
+  </div>
+  <div class="preview">
+    <div class="label">INCOMING TICKET</div>
+    <div class="row"><span>Subject</span><b>Water flooding the kitchen</b></div>
+    <div class="row"><span>Urgency</span><b>HIGH</b></div>
+    <div class="row"><span>Route</span><b>escalate</b></div>
+    <div class="badge">pending approval</div>
+  </div>
+  <div class="stack"><b>n8n</b> &middot; <b>FastAPI</b> &middot; <b>Gemini</b> &middot; <b>SQLite</b></div>
+</body></html>
