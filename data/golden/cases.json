@@ -1,0 +1,66 @@
+[
+  {
+    "id": "emergency-keyword",
+    "ticket": {"customer_name": "Sam Lee", "customer_email": "sam@example.com", "subject": "Water everywhere", "message": "There is an emergency, water is flooding my kitchen right now, please send someone ASAP."},
+    "signals": {"sentiment": "frustrated", "mentions_emergency": true, "mentions_money": false, "mentions_legal": false, "mentions_cancellation": false, "topic_guess": "other", "extraction_confidence": 0.9},
+    "repeat_contact": false,
+    "expected_route": "escalate",
+    "expected_urgency": "high"
+  },
+  {
+    "id": "legal-threat",
+    "ticket": {"customer_name": "J. Rivera", "customer_email": "jrivera@example.com", "subject": "Unacceptable", "message": "I have contacted my lawyer about this billing issue."},
+    "signals": {"sentiment": "angry", "mentions_emergency": false, "mentions_money": true, "mentions_legal": true, "mentions_cancellation": false, "topic_guess": "billing", "extraction_confidence": 0.85},
+    "repeat_contact": false,
+    "expected_route": "manager_review",
+    "expected_urgency": "medium"
+  },
+  {
+    "id": "refund-request",
+    "ticket": {"customer_name": "Alex P", "customer_email": "alexp@example.com", "subject": "Refund please", "message": "I was overcharged $150 on my last invoice, please refund the difference."},
+    "signals": {"sentiment": "neutral", "mentions_emergency": false, "mentions_money": true, "mentions_legal": false, "mentions_cancellation": false, "topic_guess": "billing", "extraction_confidence": 0.9},
+    "repeat_contact": false,
+    "expected_route": "billing_review",
+    "expected_urgency": "medium"
+  },
+  {
+    "id": "repeat-unresolved",
+    "ticket": {"customer_name": "Dana K", "customer_email": "danak@example.com", "subject": "Still waiting", "message": "This is the second time I'm writing, nobody got back to me about my appointment."},
+    "signals": {"sentiment": "frustrated", "mentions_emergency": false, "mentions_money": false, "mentions_legal": false, "mentions_cancellation": false, "topic_guess": "appointments", "extraction_confidence": 0.8},
+    "repeat_contact": true,
+    "expected_route": "manager_review",
+    "expected_urgency": "medium"
+  },
+  {
+    "id": "low-confidence",
+    "ticket": {"customer_name": "M. Ng", "customer_email": "mng@example.com", "subject": "hi", "message": "the thing from before, you know the one, can you check"},
+    "signals": {"sentiment": "neutral", "mentions_emergency": false, "mentions_money": false, "mentions_legal": false, "mentions_cancellation": false, "topic_guess": "other", "extraction_confidence": 0.2},
+    "repeat_contact": false,
+    "expected_route": "manager_review",
+    "expected_urgency": "medium"
+  },
+  {
+    "id": "plain-question",
+    "ticket": {"customer_name": "Priya S", "customer_email": "priyas@example.com", "subject": "Hours this weekend", "message": "What are your hours on Saturday and Sunday this weekend?"},
+    "signals": {"sentiment": "neutral", "mentions_emergency": false, "mentions_money": false, "mentions_legal": false, "mentions_cancellation": false, "topic_guess": "general", "extraction_confidence": 0.9},
+    "repeat_contact": false,
+    "expected_route": "auto_draft",
+    "expected_urgency": "low"
+  },
+  {
+    "id": "cancellation",
+    "ticket": {"customer_name": "R. Chen", "customer_email": "rchen@example.com", "subject": "Cancel", "message": "I'd like to cancel my subscription starting next month."},
+    "signals": {"sentiment": "neutral", "mentions_emergency": false, "mentions_money": false, "mentions_legal": false, "mentions_cancellation": true, "topic_guess": "billing", "extraction_confidence": 0.85},
+    "repeat_contact": false,
+    "expected_route": "billing_review",
+    "expected_urgency": "medium"
+  },
+  {
+    "id": "shouting-no-other-signal",
+    "ticket": {"customer_name": "T. Okafor", "customer_email": "tokafor@example.com", "subject": "THIS IS RIDICULOUS", "message": "I WAITED THIRTY MINUTES AND NO ONE CAME!! Please just tell me when you can come."},
+    "signals": {"sentiment": "angry", "mentions_emergency": false, "mentions_money": false, "mentions_legal": false, "mentions_cancellation": false, "topic_guess": "appointments", "extraction_confidence": 0.8},
+    "repeat_contact": false,
+    "expected_route": "auto_draft",
+    "expected_urgency": "medium"
+  }
+]

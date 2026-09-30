@@ -1,0 +1,846 @@
+{
+  "name": "TriagePilot",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## TriagePilot (hybrid: n8n + FastAPI)\nn8n orchestrates; the rule engine, guardrails and audit live in a FastAPI service. Urgency and routing are never decided by the model.",
+        "height": 140,
+        "width": 360,
+        "color": 6
+      },
+      "id": "tp-note-overview",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 1 \u00b7 Intake & validation\nShared secret checked, required fields checked.",
+        "height": 160,
+        "width": 660,
+        "color": 6
+      },
+      "id": "tp-note-1",
+      "name": "Note - Intake",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 2 \u00b7 Triage (FastAPI)\nModel extracts signals only. A 14 rule catalog decides urgency, topic and route. Model then drafts a reply, checked by a narration guardrail.\nPOST {api_base_url}/triage",
+        "height": 160,
+        "width": 320,
+        "color": 6
+      },
+      "id": "tp-note-2",
+      "name": "Note - Triage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 3 \u00b7 Route by outcome + human decides\nEach outcome has its own review lane. A person approves, edits or rejects, never an automatic send.",
+        "height": 160,
+        "width": 500,
+        "color": 6
+      },
+      "id": "tp-note-3",
+      "name": "Note - Routing",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 4 \u00b7 Approval\nSecond trigger, same workflow. A human's decision is recorded to the audit trail in FastAPI.\nPOST {api_base_url}/human/{ticket_id}",
+        "height": 160,
+        "width": 660,
+        "color": 6
+      },
+      "id": "tp-note-4",
+      "name": "Note - Approval",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "triage/intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "tp-webhook-intake",
+      "name": "Webhook - Ticket Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "tp-webhook-intake-id"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api_base_url",
+              "name": "api_base_url",
+              "value": "https://YOUR-DEPLOYED-FASTAPI-URL",
+              "type": "string"
+            },
+            {
+              "id": "webhook_secret",
+              "name": "webhook_secret",
+              "value": "CHANGE-ME-RANDOM-STRING",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-config-intake",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.headers[\"x-triage-secret\"] }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "={{ $json.webhook_secret }}",
+              "id": "tp-cond-secret"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tp-check-secret",
+      "name": "Check Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"unauthorized\" } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "tp-respond-401",
+      "name": "Respond Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.customer_name }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "rightValue": "",
+              "id": "tp-v1"
+            },
+            {
+              "leftValue": "={{ $json.body.customer_email }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "rightValue": "",
+              "id": "tp-v2"
+            },
+            {
+              "leftValue": "={{ $json.body.subject }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "rightValue": "",
+              "id": "tp-v3"
+            },
+            {
+              "leftValue": "={{ $json.body.message }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "rightValue": "",
+              "id": "tp-v4"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tp-validate",
+      "name": "Validate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"missing_fields\" } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "tp-respond-400",
+      "name": "Respond Missing Fields",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.api_base_url }}/triage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { customer_name: $('Webhook - Ticket Intake').item.json.body.customer_name, customer_email: $('Webhook - Ticket Intake').item.json.body.customer_email, subject: $('Webhook - Ticket Intake').item.json.body.subject, message: $('Webhook - Ticket Intake').item.json.body.message } }}",
+        "options": {}
+      },
+      "id": "tp-call-fastapi-triage",
+      "name": "Call FastAPI /triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.route }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "escalate",
+              "id": "tp-r1"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tp-is-escalate",
+      "name": "Is Escalate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.route }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "billing_review",
+              "id": "tp-r2"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tp-is-billing",
+      "name": "Is Billing Review",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.route }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "manager_review",
+              "id": "tp-r3"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tp-is-manager",
+      "name": "Is Manager Review",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lane_label",
+              "name": "lane_label",
+              "value": "Escalate now",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-lane-escalate",
+      "name": "Escalate Now",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1568,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lane_label",
+              "name": "lane_label",
+              "value": "Billing review",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-lane-billing",
+      "name": "Billing Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1568,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lane_label",
+              "name": "lane_label",
+              "value": "Manager review",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-lane-manager",
+      "name": "Manager Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1568,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lane_label",
+              "name": "lane_label",
+              "value": "Auto-draft ready",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-lane-auto",
+      "name": "Auto-Draft Ready",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1568,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ticket_id: $json.ticket_id, route: $json.route, lane: $json.lane_label, status: \"pending approval\" } }}",
+        "options": {}
+      },
+      "id": "tp-respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "triage/approve",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "tp-webhook-approve",
+      "name": "Webhook - Approval",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        864
+      ],
+      "webhookId": "tp-webhook-approve-id"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api_base_url",
+              "name": "api_base_url",
+              "value": "https://YOUR-DEPLOYED-FASTAPI-URL",
+              "type": "string"
+            },
+            {
+              "id": "webhook_secret",
+              "name": "webhook_secret",
+              "value": "CHANGE-ME-RANDOM-STRING",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "tp-config-approve",
+      "name": "Config2",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.headers[\"x-triage-secret\"] }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "={{ $json.webhook_secret }}",
+              "id": "tp-cond-secret2"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tp-check-secret2",
+      "name": "Check Secret (Approval)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"unauthorized\" } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "tp-respond-401b",
+      "name": "Respond Unauthorized (Approval)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config2').item.json.api_base_url }}/human/{{ $('Webhook - Approval').item.json.body.ticket_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ticket_id: $('Webhook - Approval').item.json.body.ticket_id, action: $('Webhook - Approval').item.json.body.action, note: $('Webhook - Approval').item.json.body.note } }}",
+        "options": {}
+      },
+      "id": "tp-call-fastapi-human",
+      "name": "Call FastAPI /human",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "tp-respond-approve",
+      "name": "Respond Approval Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        864
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Ticket Intake": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Secret": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "Call FastAPI /triage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Missing Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call FastAPI /triage": {
+      "main": [
+        [
+          {
+            "node": "Is Escalate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Escalate": {
+      "main": [
+        [
+          {
+            "node": "Escalate Now",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Billing Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Billing Review": {
+      "main": [
+        [
+          {
+            "node": "Billing Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Manager Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Manager Review": {
+      "main": [
+        [
+          {
+            "node": "Manager Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auto-Draft Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalate Now": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Billing Review": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manager Review": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Draft Ready": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Approval": {
+      "main": [
+        [
+          {
+            "node": "Config2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config2": {
+      "main": [
+        [
+          {
+            "node": "Check Secret (Approval)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Secret (Approval)": {
+      "main": [
+        [
+          {
+            "node": "Call FastAPI /human",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unauthorized (Approval)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call FastAPI /human": {
+      "main": [
+        [
+          {
+            "node": "Respond Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

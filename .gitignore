@@ -1,1 +1,8 @@
-.DS_Store
+data/tickets.db
+data/test_tickets.db
+data/cassettes/
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/

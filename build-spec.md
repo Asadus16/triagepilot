@@ -1,108 +1,82 @@
-# TriagePilot build spec
+# TriagePilot build spec — hybrid version
 
-Exact node by node plan, built directly on the n8n instance through its REST API the moment an instance URL
-and API key are available. Nothing here is guessed at blindly: the Gemini call in step 4 is the same one
-verified live in `README.md` and `test/verify-gemini.sh`, and every other node uses n8n's own standard,
-documented node types. Any parameter that turns out wrong on the real instance gets fixed immediately against
-the real error, not guessed at twice.
+Replaces the earlier two-workflow, n8n-only spec. One workflow now, mirroring
+claim-triage-agent's canvas: a webhook takes the ticket, a FastAPI call does the real
+work, the result routes to one of four human review lanes, and a second trigger on the
+same canvas handles the approval. Every node here does real work; nothing is here to
+pad the node count.
 
-## Workflow 1: Intake — exact node parameters
+## Prerequisite: the FastAPI service is running and reachable
 
-1. **Webhook**
-   - HTTP Method: `POST`
-   - Path: `triage/intake`
-   - Response Mode: `Using 'Respond to Webhook' Node`
-2. **If — Check secret**
-   - Condition: `{{$json.headers['x-triage-secret']}}` is equal to `{{$node["Config"].json.webhook_secret}}`
-   - False branch: goes straight to a **Respond to Webhook** node returning status 401,
-     `{ "error": "unauthorized" }`, and nothing downstream runs.
-3. **Set — Config** (the only node a new business ever has to edit)
-   - `business_name` (string): e.g. `Bright Smile Dental`
-   - `business_type` (string): e.g. `a dental clinic`
-   - `categories` (string, comma separated): e.g. `appointments,billing,insurance,general,other`
-   - `webhook_secret` (string): a random value, matches what the caller sends
-   - `sheet_id` (string): the Google Sheet's ID from its URL
-   - `sheet_tab` (string): e.g. `Tickets`
-4. **HTTP Request — Gemini**
-   - Method: `POST`
-   - URL: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`
-   - Authentication: Generic Credential, Query Auth, `key` = the Gemini API key (n8n credential, never typed
-     into the node body)
-   - Body (JSON), with `{{ }}` filled from the Config node and the incoming webhook item exactly as proven
-     live in `test/verify-gemini.sh`:
-     ```json
-     {
-       "systemInstruction": { "parts": [{ "text": "You triage support tickets for {{ $('Config').item.json.business_name }}, {{ $('Config').item.json.business_type }}. Categories: {{ $('Config').item.json.categories }}. Never invent facts not in the ticket. Draft a short, polite reply a staff member can edit before sending." }] },
-       "contents": [{ "parts": [{ "text": "{{ $json.body.subject }}: {{ $json.body.message }}" }] }],
-       "generationConfig": {
-         "responseMimeType": "application/json",
-         "responseSchema": {
-           "type": "OBJECT",
-           "properties": {
-             "urgency": { "type": "STRING", "enum": ["low", "medium", "high"] },
-             "topic": { "type": "STRING", "enum": "{{ $('Config').item.json.categories.split(',') }}" },
-             "draft_reply": { "type": "STRING" }
-           },
-           "required": ["urgency", "topic", "draft_reply"]
-         }
-       }
-     }
-     ```
-5. **Set / Code — Parse Gemini reply**
-   - Parses `{{$json.candidates[0].content.parts[0].text}}` (a JSON string) into three fields:
-     `urgency`, `topic`, `draft_reply`.
-6. **Google Sheets — Append row**
-   - Spreadsheet: `{{ $('Config').item.json.sheet_id }}`, Sheet: `{{ $('Config').item.json.sheet_tab }}`
-   - Columns, matching `sheet-template.csv` exactly: `ticket_id` (a generated uuid),
-     `received_at` (`{{$now}}`), `customer_name`, `customer_email`, `subject`, `message` (from the webhook
-     body), `urgency`, `topic`, `draft_reply` (from step 5), `status` (literal `pending approval`),
-     `approved_at` (blank).
+This workflow calls a FastAPI service (`app/main.py` in this repo) over HTTP. It needs
+to be deployed somewhere n8n Cloud can reach it (a small VPS, Render, Railway, Fly.io,
+anywhere that runs Python), not on localhost. Get that URL before building the n8n side.
+
+## Single workflow: node by node
+
+1. **Webhook — Ticket Intake**
+   - POST, path `triage/intake`.
+2. **If — Validate**
+   - Checks `customer_name`, `customer_email`, `subject`, `message` are all present and
+     non empty. False: **Respond to Webhook**, status 400,
+     `{ "error": "missing_fields" }`, stop.
+3. **HTTP Request — Call FastAPI /triage**
+   - POST `{{ $('Config').item.json.api_base_url }}/triage`
+   - Header: `x-service-key` = the shared secret (n8n credential, never inline)
+   - Body: `{ "customer_name": ..., "customer_email": ..., "subject": ..., "message": ... }`
+     from the webhook body.
+   - Returns the `Decision` object: `ticket_id`, `urgency`, `topic`, `route`,
+     `draft_reply`, `confidence`, `reason_codes`.
+4. **Switch — Route by outcome**
+   - Four branches on `{{$json.route}}`: `auto_draft`, `escalate`, `billing_review`,
+     `manager_review`.
+5. **Four lane nodes** (Set, marked `manual`, same pattern as claim-triage-agent's
+   Auto-approve payment / Adjuster approval / SIU review / Manual review):
+   - **Auto-draft ready** — quick approval lane, no urgency.
+   - **Escalate now** — emergency language, needs eyes immediately.
+   - **Billing review** — money at stake, a person checks the numbers before it sends.
+   - **Manager review** — legal risk, a repeat unresolved contact, or a low confidence
+     read.
+6. **Merge** the four lanes back together.
 7. **Respond to Webhook**
-   - Status 200, body `{ "received": true }`.
+   - 200, `{ "ticket_id": ..., "route": ..., "status": "pending approval" }`.
 
-## Workflow 2: Approval watcher — exact node parameters
+## Second trigger, same canvas: the approval step
 
-1. **Google Sheets Trigger**
-   - Poll, Trigger On: Row Update, same spreadsheet and tab as above.
-2. **If**
-   - Condition: `{{$json.status}}` is equal to `approved`. False: stop, no further nodes.
-3. **Set**
-   - `approved_at` = `{{$now}}`, `status` = `ready to send`.
-4. **Google Sheets — Update row**
-   - Matches on `ticket_id`, writes back `status` and `approved_at` only.
+8. **Webhook — Approval** (or a Form Trigger if the n8n plan supports it)
+   - Takes `ticket_id` and `action` (`approved` / `edited` / `rejected`), optionally
+     `note`.
+9. **HTTP Request — Call FastAPI /human/{ticket_id}**
+   - POST `{{ $('Config').item.json.api_base_url }}/human/{{$json.ticket_id}}`
+   - Header: `x-service-key`, same credential as step 3.
+   - Body: `{ "ticket_id": ..., "action": ..., "note": ... }`.
+10. **Respond to Webhook**
+    - 200, the updated status from FastAPI's response.
 
-Sending itself (a Gmail node reading `ready to send` rows) is a deliberate later addition, not built now, see
-`README.md`.
+## Config node
 
-## Resume checklist (for whichever session has the n8n MCP connection)
+One Set node, `Config`, read by every HTTP Request node above:
+- `api_base_url`: where the FastAPI service is deployed.
+- (The shared secret and Gemini key live in the FastAPI service's own `.env`, not here,
+  n8n only needs the one shared secret to call it.)
 
-1. `ToolSearch` for `n8n` to confirm the MCP tools are live (`create_workflow`, `list_workflows`, etc.); if
-   nothing matches, MCP is not connected on this account yet, stop and tell the user.
-2. `list_workflows` first, so an existing partial attempt is not duplicated.
-3. Build Workflow 1 exactly as specified above, using `Bright Smile Dental` as the demo Config values
-   (already verified live, see README), then Workflow 2.
-4. Send one real test POST to the webhook path with a sample ticket, confirm a correctly filled row appears
-   in the Sheet with `status = pending approval`.
-5. Manually change that row's status to `approved` in the Sheet, confirm Workflow 2 flips it to
-   `ready to send` with an `approved_at` timestamp.
-6. Compare what n8n's MCP server actually built against this spec node by node. It is officially "Public
-   Preview" with known rough edges on branching and node choice (see README), so fix anything that drifted
-   rather than assuming it matches. Do not redesign the workflow, only correct it to match this spec.
-7. Report back plainly what was built, what the test run showed, and anything that had to be corrected.
+## Credentials needed in n8n
 
-## Credentials needed in n8n (set up inside n8n's UI, not in this repo)
-- Gemini API key, as a generic credential or HTTP header credential.
-- Google Sheets OAuth2 connection.
-- The webhook secret, any random string, entered once into the Config node.
-- Instance-level MCP enabled (Settings, Instance-level MCP), with Claude Code connected as a client, so this
-  gets built through n8n's own `create_workflow` / `update_workflow` tools rather than hand written JSON.
+- An HTTP header credential holding the FastAPI shared secret (`x-service-key`).
+- Instance-level MCP enabled, with Claude Code connected as a client, so this gets
+  built through n8n's own `create_workflow` tool.
 
-## What is verified vs what is not yet
+## Resume checklist
 
-Verified against the live Gemini API: the exact request shape, the structured output schema, and that
-swapping only the business name, type and categories is the entire per business change (see README). Verified
-against n8n's own docs and blog (2026-09-26): the MCP server is official, ships in every edition including
-Cloud, and exposes workflow build tools, though n8n's own blog calls it "Public Preview" with real rough
-edges on complex branching and node selection. Not verified yet: how it actually behaves building this
-specific workflow, since that needs the real connection. Its output gets checked step by step once building
-starts, not trusted blindly.
+1. Confirm the FastAPI service is deployed and `GET {base_url}/rules` returns the 14
+   rule catalog.
+2. `ToolSearch` for `n8n` to confirm the MCP tools are live.
+3. `list_workflows`, check whether the old two-workflow version still exists; if so,
+   ask before deleting it rather than assuming.
+4. Build the single workflow above.
+5. Test: POST a sample ticket to the intake webhook, confirm the response names a
+   route, then POST an approval to the approval webhook with that `ticket_id` and
+   confirm the status changes.
+6. Compare what n8n's MCP server actually built against this spec and correct drift,
+   the same caution as before, since it is officially "Public Preview."
+7. Report back what was built, the test result, and anything corrected.

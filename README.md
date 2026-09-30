@@ -1,102 +1,95 @@
 # TriagePilot
 
-A support ticket triage automation that works for any business. One n8n workflow, one config block at the
-top (business name, business type, category list, tone). Change those four things and it runs for a dental
-clinic, a plumbing company, a SaaS product or a coffee shop, with no other edits.
+A support ticket triage system that works for any business. One config block (business
+name, type, category list) is the whole per business setup. Built as a hybrid, the same
+pattern as its two sibling portfolio projects, **claim-triage-agent** and
+**analytics-agent**: **n8n orchestrates** the workflow and the human review step,
+while a **FastAPI service holds the deterministic engine** and the audit trail, because
+n8n Cloud's Code node can't import a library or make a network call, so real logic has
+to live somewhere that can.
 
-## What it does
+## What changed from the first version
 
-1. A ticket comes in through a webhook (from a contact form, a helpdesk, an email forwarding rule, anything
-   that can POST JSON).
-2. A shared secret in the request header is checked, so random requests are dropped before anything runs.
-3. Gemini reads the ticket and returns urgency (low, medium, high), a topic from the business's own category
-   list, and a draft reply, as validated structured JSON, not free text that has to be parsed and hoped for.
-4. The ticket, its classification and the draft land in a Google Sheet, which is the support inbox tracker,
-   with a status column starting at "pending approval."
-5. A second, separate workflow watches the sheet. When a human changes a row's status to "approved," it marks
-   the row ready to send. Sending itself (a Gmail node) is a deliberate later step, not built yet, since a
-   real send should never happen without this project first being wired to a real inbox by the business
-   owner.
+The first version was n8n plus Gemini plus a Google Sheet, with no backend, deliberately
+the smallest stack for the job. It was rebuilt into this hybrid so it would carry the
+same real weight as its two siblings: **the model never decides**, a rule engine does,
+with a readable catalog, a full audit trail, and a golden regression suite, not a
+single LLM call that hopes for the best. That is a genuine architecture change, not
+extra nodes added for appearance; every node in the resulting n8n workflow does real
+work.
 
-## Why this design
+## What makes it different
 
-- **No agent loop.** Classifying and drafting from the ticket text alone is one Gemini call, not a chain of
-  tool calls. Adding a loop here would be complexity with no requirement behind it.
-- **No paid lookup API.** Nothing here needs to search the web or enrich the ticket from outside, so nothing
-  costs money beyond Gemini's free tier at demo volume.
-- **Human approval before any send**, always. This is the same rule used in the Ember and Oak project's order
-  lookups and in `app-security-baseline.md`: an AI system that can act on real customers needs a person in the
-  loop before anything goes out.
-- **Structured output, not parsed prose.** Gemini's `responseSchema` forces the exact shape below; there is no
-  regex pulling a category out of a paragraph.
+- **The model never decides.** Gemini only extracts signals from the ticket (sentiment,
+  whether it mentions an emergency, money, legal risk or a cancellation, and a topic
+  guess), validated against a strict schema. A 14 rule catalog (`app/rules/catalog.py`)
+  decides urgency and routes the ticket, deterministically. `GET /rules` returns the
+  whole catalog for a client to review.
+- **Four human review lanes, not one**, chosen by the rules that fired: `auto_draft`
+  (nothing flagged, a quick approval), `escalate` (emergency or safety language),
+  `billing_review` (money at stake), `manager_review` (legal risk, a repeat unresolved
+  contact, or an extraction too unsure to trust). Escalation always outranks a billing
+  question in the same ticket.
+- **A narration guardrail.** After Gemini drafts a reply, the draft is checked against
+  what the engine actually decided; language implying an emergency or legal risk the
+  engine never flagged gets replaced with a neutral draft instead of shipping an
+  inconsistent reply.
+- **A real repeat contact check** (`app/store.py`), not a guess: the same email writing
+  in again within 48 hours is a genuine database lookup against past tickets, and it
+  routes to a manager.
+- **A golden regression suite** (`data/golden/cases.json`, `app/golden.py`), 8 hand
+  verified cases run against the rule engine directly, the true oracle for this system.
+  `GET /golden/run` and CI fail if a route or an urgency silently changes.
+- **Full audit trail** (SQLite, `app/store.py`): every ticket, its decision, every rule
+  result, and every human review, reconstructable by `ticket_id`.
+- **Record/replay of Gemini calls** so tests are fast, free and deterministic and the
+  demo runs with no live key.
 
-## Status
+## Architecture
 
-Confirmed with a live call to the real Gemini API (`gemini-3.5-flash-lite`), see `test/verify-gemini.sh` and
-its recorded output in this file below. **The n8n workflow itself is not built yet.**
-
-n8n has an official, first party MCP server built into every edition, including Cloud (confirmed against
-n8n's own docs and blog, 2026-09-26, not from memory). It exposes tools such as `create_workflow`,
-`update_workflow`, `list_workflows` and `execute_workflow`, backed by n8n's own REST API. Once the user
-enables it (Settings, Instance-level MCP, then Connect a client, Claude Code) and connects this session to
-it, the workflow gets built directly through those tools instead of hand written JSON or manual API calls,
-so the real instance validates every step immediately.
-
-n8n's own blog calls this feature "Public Preview" and names real rough edges: complex branching often needs
-manual cleanup, node choice can go wrong when options overlap, and it can over build before refining. Its
-output gets checked here rather than trusted blindly. See `build-spec.md` for the exact node by node plan it
-gets built against.
-
-## Verified Gemini call and response
-
-Request (see `test/verify-gemini.sh` for the exact, runnable version):
-
-```json
-{
-  "systemInstruction": { "parts": [{ "text": "You triage support tickets for Bright Smile Dental, a dental clinic. Categories: appointments, billing, insurance, general, other. Never invent facts not in the ticket. Draft a short, polite reply a staff member can edit before sending." }] },
-  "contents": [{ "parts": [{ "text": "My appointment reminder said Tuesday but the office called it Wednesday, which is right? I have work off Tuesday." }] }],
-  "generationConfig": {
-    "responseMimeType": "application/json",
-    "responseSchema": {
-      "type": "OBJECT",
-      "properties": {
-        "urgency": { "type": "STRING", "enum": ["low", "medium", "high"] },
-        "topic": { "type": "STRING", "enum": ["appointments", "billing", "insurance", "general", "other"] },
-        "draft_reply": { "type": "STRING" }
-      },
-      "required": ["urgency", "topic", "draft_reply"]
-    }
-  }
-}
+```
+Ticket (n8n webhook)
+  -> FastAPI POST /triage
+       - Gemini extracts signals only (validated schema, fails closed on bad JSON)
+       - rule engine (14 rules) -> flags -> route + urgency
+       - Gemini drafts a reply -> narration guardrail checks it against the flags
+       - saved to the audit trail
+  -> n8n routes by `route`:
+       auto_draft      -> quick approval lane
+       escalate        -> emergency lane, needs eyes now
+       billing_review   -> a person checks the numbers
+       manager_review   -> legal risk, repeat contact, or low confidence
+  -> human approves, edits or rejects -> n8n POST /human/{ticket_id}
+  -> status becomes "ready to send" or "rejected", recorded in the audit trail
 ```
 
-Real response, unedited:
+## Run it
 
-```json
-{
-  "urgency": "medium",
-  "topic": "appointments",
-  "draft_reply": "Hello, thank you for reaching out to Bright Smile Dental. We apologize for the confusion regarding your appointment day. Let us check our schedule and confirm the correct date for you right away."
-}
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # set SERVICE_API_KEY; GEMINI_API_KEY optional in replay mode
+pytest                        # 11 tests incl. the rule engine, the golden gate and API auth
+uvicorn app.main:app --reload --port 8099
 ```
 
-Swapping only the business name, type and category list in `systemInstruction` is the entire per business
-setup. Nothing else in the request changes.
+`GET /rules` and `GET /golden/run` (with the `x-service-key` header) need no Gemini key.
+`POST /triage` needs `LLM_MODE=live` or `record` plus a real `GEMINI_API_KEY`, or a
+matching recorded cassette in `data/cassettes/` for `replay` mode.
 
-## Setup, once n8n access is provided
+## n8n workflow
 
-1. n8n Cloud account, with Settings, Instance-level MCP, enabled, and Claude Code connected as a client
-   (n8n's own "Connect a client" flow gives the exact command, then one OAuth sign in).
-2. A Google account connected in n8n as a Google Sheets credential (OAuth, done inside n8n's UI).
-3. The Gemini API key, added in n8n as an HTTP header credential or a generic credential, never hard coded in
-   a node.
-4. A webhook secret, any random string, set once in the config block and required in the request header.
+One workflow, two real entry points on the same canvas: the ticket intake webhook, and
+the human review step. See `build-spec.md` for the exact node by node plan. It is built
+directly on the n8n instance through n8n's own MCP server once connected, the same way
+Ember and Oak's sibling projects were, not a blind hand written workflow file.
 
 ## Known limits
 
-- Sending real replies is not built. Approval only marks a row ready.
-- Not connected to a real ticketing system yet. The webhook accepts whatever JSON shape is documented in
-  `build-spec.md`, so any real contact form, helpdesk or email forwarding rule needs to be pointed at it in
-  that shape.
-- Gemini's free tier limit is 15 requests per minute for this model, same as the Ember and Oak project. Fine
-  for a demo, worth a paid tier before real volume.
+- Sending a real reply is not built. Approval only marks a ticket ready to send.
+- The 14 rule catalog is a real, readable starting point, not exhaustive; a real
+  deployment would extend it with the business's actual escalation policy.
+- Gemini's free tier limit is 15 requests per minute for this model. Fine for a demo,
+  worth a paid tier before real volume.
+- Cover and ERD images (`docs/`) reflect the earlier, Sheet based version and need
+  regenerating against the new SQLite schema.
